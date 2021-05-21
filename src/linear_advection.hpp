@@ -45,10 +45,10 @@ void LinearAdvectionSystem<problem_t>::ComputeMaxSignalSpeed(
     amrex::Array4<amrex::Real const> const & /*cons*/, amrex::Array4<amrex::Real> const &maxSignal,
     const double advectionVx, amrex::Box const &indexRange)
 {
-	const auto vx = advectionVx;
+	//const auto vx = advectionVx;
 	amrex::ParallelFor(indexRange, [=] AMREX_GPU_DEVICE(int i, int j, int k) {
-		const double signal_max = fabs(vx);
-		// const double signal_max = advectionVx; // fails with 'invalid device function'
+		//const double signal_max = fabs(vx);
+		const double signal_max = advectionVx; // fails with 'invalid device function'
 		maxSignal(i, j, k) = signal_max;
 	});
 }
