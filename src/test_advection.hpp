@@ -10,7 +10,6 @@
 ///
 
 // external headers
-#include <fmt/format.h>
 
 // internal headers
 

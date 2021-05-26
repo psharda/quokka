@@ -1,0 +1,2 @@
+CEXE_sources += test_advection.cpp linear_advection.cpp hyperbolic_system.cpp AdvectionSimulation.cpp simulation.cpp
+CEXE_headers += test_advection.hpp linear_advection.hpp hyperbolic_system.hpp AdvectionSimulation.hpp simulation.hpp valarray.hpp

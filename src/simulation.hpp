@@ -18,7 +18,6 @@
 #include <cmath>
 
 // library headers
-#include "fmt/core.h"
 #include <AMReX_Geometry.H>
 #include <AMReX_Gpu.H>
 #include <AMReX_MultiFab.H>

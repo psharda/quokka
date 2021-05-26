@@ -9,6 +9,11 @@
 /// \brief Implements classes and functions to organise the overall setup,
 /// timestepping, solving, and I/O of a simulation for linear advection.
 
+#include <climits>
+#include <limits>
+#include <string>
+#include <utility>
+
 #include "AMReX_Arena.H"
 #include "AMReX_Array4.H"
 #include "AMReX_BLassert.H"
@@ -17,13 +22,9 @@
 #include "AMReX_IntVect.H"
 #include "AMReX_REAL.H"
 #include "AMReX_Utility.H"
-#include "fmt/core.h"
+
 #include "linear_advection.hpp"
 #include "simulation.hpp"
-#include <climits>
-#include <limits>
-#include <string>
-#include <utility>
 
 
 // Simulation class should be initialized only once per program (i.e., is a singleton)
