@@ -176,8 +176,8 @@ template <typename problem_t> class AMRSimulation : public amrex::AmrCore
 
 	// Nghost = number of ghost cells for each array
 	int nghost_ = 4;	   // PPM needs nghost >= 3, PPM+flattening needs nghost >= 4
-	int ncomp_ = NAN;	   // = number of components (conserved variables) for each array
-	int ncompPrimitive_ = NAN; // number of primitive variables
+	int ncomp_ = 0;	   // = number of components (conserved variables) for each array
+	int ncompPrimitive_ = 0; // number of primitive variables
 	amrex::Vector<std::string> componentNames_;
 	bool areInitialConditionsDefined_ = false;
 

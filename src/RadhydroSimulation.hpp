@@ -62,6 +62,7 @@ template <typename problem_t> class RadhydroSimulation : public AMRSimulation<pr
 	using AMRSimulation<problem_t>::finest_level;
 	using AMRSimulation<problem_t>::finestLevel;
 	using AMRSimulation<problem_t>::do_reflux;
+	using AMRSimulation<problem_t>::Verbose;
 
 	std::vector<double> t_vec_;
 	std::vector<double> Trad_vec_;
@@ -245,7 +246,7 @@ void RadhydroSimulation<problem_t>::advanceHydroAtLevel(int lev, amrex::Real tim
 	fillBoundaryConditions(state_old_[lev], state_old_[lev], lev, time);
 
 #ifdef AMREX_USE_OMP
-#pragma omp parallel if (Gpu::notInLaunchRegion())
+#pragma omp parallel if (amrex::Gpu::notInLaunchRegion())
 #endif
 	{
 		// advance all grids on local processor (Stage 1 of integrator)
@@ -279,7 +280,7 @@ void RadhydroSimulation<problem_t>::advanceHydroAtLevel(int lev, amrex::Real tim
 	fillBoundaryConditions(state_new_[lev], state_new_[lev], lev, time + dt_lev);
 
 #ifdef AMREX_USE_OMP
-#pragma omp parallel if (Gpu::notInLaunchRegion())
+#pragma omp parallel if (amrex::Gpu::notInLaunchRegion())
 #endif
 	{
 		// advance all grids on local processor (Stage 2 of integrator)
@@ -434,7 +435,7 @@ void RadhydroSimulation<problem_t>::subcycleRadiationAtLevel(int lev, amrex::Rea
 	AMREX_ALWAYS_ASSERT(nsubSteps < 1e4);
 	AMREX_ALWAYS_ASSERT(dt_radiation > 0.0);
 
-	if (amrex::Verbose() != 0) {
+	if (Verbose()) {
 		amrex::Print() << "\tRadiation substeps: " << nsubSteps << "\tdt: " << dt_radiation
 			       << "\n";
 	}
@@ -460,71 +461,86 @@ void RadhydroSimulation<problem_t>::advanceSingleTimestepAtLevelRadiation(
 	// update ghost zones [old timestep]
 	fillBoundaryConditions(state_old_[lev], state_old_[lev], lev, time);
 
-	// advance all grids on local processor (Stage 1 of integrator)
-	for (amrex::MFIter iter(state_new_[lev]); iter.isValid(); ++iter) {
-		const amrex::Box &indexRange = iter.tilebox();
-		auto const &stateOld = state_old_[lev].const_array(iter);
-		auto const &stateNew = state_new_[lev].array(iter);
-		auto [fluxArrays, fluxDiffusiveArrays] =
-		    computeRadiationFluxes(stateOld, indexRange, ncompHyperbolic_, dx);
+#ifdef AMREX_USE_OMP
+#pragma omp parallel if (amrex::Gpu::notInLaunchRegion())
+#endif
+	{
+		// advance all grids on local processor (Stage 1 of integrator)
+		for (amrex::MFIter iter(state_new_[lev],amrex::TilingIfNotGPU()); iter.isValid(); ++iter) {
+			const amrex::Box &indexRange = iter.tilebox();
+			auto const &stateOld = state_old_[lev].const_array(iter);
+			auto const &stateNew = state_new_[lev].array(iter);
+			auto [fluxArrays, fluxDiffusiveArrays] =
+				computeRadiationFluxes(stateOld, indexRange, ncompHyperbolic_, dx);
 
-		// Stage 1 of RK2-SSP
-		RadSystem<problem_t>::PredictStep(
-		    stateOld, stateNew,
-		    {AMREX_D_DECL(fluxArrays[0].array(), fluxArrays[1].array(),
-				  fluxArrays[2].array())},
-		    {AMREX_D_DECL(fluxDiffusiveArrays[0].const_array(),
-				  fluxDiffusiveArrays[1].const_array(),
-				  fluxDiffusiveArrays[2].const_array())},
-		    dt_radiation, dx, indexRange, ncompHyperbolic_);
+			// Stage 1 of RK2-SSP
+			RadSystem<problem_t>::PredictStep(
+				stateOld, stateNew,
+				{AMREX_D_DECL(fluxArrays[0].array(), fluxArrays[1].array(),
+					fluxArrays[2].array())},
+				{AMREX_D_DECL(fluxDiffusiveArrays[0].const_array(),
+					fluxDiffusiveArrays[1].const_array(),
+					fluxDiffusiveArrays[2].const_array())},
+				dt_radiation, dx, indexRange, ncompHyperbolic_);
 
-		if (do_reflux) {
-			// increment flux registers
-			// WARNING: as written, diffusive flux correction is not compatible with reflux!!
-			auto expandedFluxes =
-				expandFluxArrays(fluxArrays, nstartHyperbolic_, state_new_[lev].nComp());
-			incrementFluxRegisters(iter, fr_as_crse, fr_as_fine, expandedFluxes, lev,
-						0.5 * dt_radiation);
+			if (do_reflux) {
+				// increment flux registers
+				// WARNING: as written, diffusive flux correction is not compatible with reflux!!
+				auto expandedFluxes =
+					expandFluxArrays(fluxArrays, nstartHyperbolic_, state_new_[lev].nComp());
+				incrementFluxRegisters(iter, fr_as_crse, fr_as_fine, expandedFluxes, lev,
+							0.5 * dt_radiation);
+			}
 		}
 	}
 
 	// update ghost zones [intermediate stage stored in state_new_]
 	fillBoundaryConditions(state_new_[lev], state_new_[lev], lev, time + dt_radiation);
 
-	// advance all grids on local processor (Stage 2 of integrator)
-	for (amrex::MFIter iter(state_new_[lev]); iter.isValid(); ++iter) {
-		const amrex::Box &indexRange = iter.tilebox();
-		auto const &stateOld = state_old_[lev].const_array(iter);
-		auto const &stateInter = state_new_[lev].const_array(iter);
-		auto const &stateNew = state_new_[lev].array(iter);
-		auto [fluxArrays, fluxDiffusiveArrays] =
-		    computeRadiationFluxes(stateInter, indexRange, ncompHyperbolic_, dx);
+#ifdef AMREX_USE_OMP
+#pragma omp parallel if (amrex::Gpu::notInLaunchRegion())
+#endif
+	{
+		// advance all grids on local processor (Stage 2 of integrator)
+		for (amrex::MFIter iter(state_new_[lev],amrex::TilingIfNotGPU()); iter.isValid(); ++iter) {
+			const amrex::Box &indexRange = iter.tilebox();
+			auto const &stateOld = state_old_[lev].const_array(iter);
+			auto const &stateInter = state_new_[lev].const_array(iter);
+			auto const &stateNew = state_new_[lev].array(iter);
+			auto [fluxArrays, fluxDiffusiveArrays] =
+				computeRadiationFluxes(stateInter, indexRange, ncompHyperbolic_, dx);
 
-		// Stage 2 of RK2-SSP
-		RadSystem<problem_t>::AddFluxesRK2(
-		    stateNew, stateOld, stateInter,
-		    {AMREX_D_DECL(fluxArrays[0].array(), fluxArrays[1].array(),
-				  fluxArrays[2].array())},
-		    {AMREX_D_DECL(fluxDiffusiveArrays[0].const_array(),
-				  fluxDiffusiveArrays[1].const_array(),
-				  fluxDiffusiveArrays[2].const_array())},
-		    dt_radiation, dx, indexRange, ncompHyperbolic_);
+			// Stage 2 of RK2-SSP
+			RadSystem<problem_t>::AddFluxesRK2(
+				stateNew, stateOld, stateInter,
+				{AMREX_D_DECL(fluxArrays[0].array(), fluxArrays[1].array(),
+					fluxArrays[2].array())},
+				{AMREX_D_DECL(fluxDiffusiveArrays[0].const_array(),
+					fluxDiffusiveArrays[1].const_array(),
+					fluxDiffusiveArrays[2].const_array())},
+				dt_radiation, dx, indexRange, ncompHyperbolic_);
 
-		if (do_reflux) {
-			// increment flux registers
-			// WARNING: as written, diffusive flux correction is not compatible with reflux!!
-			auto expandedFluxes =
-				expandFluxArrays(fluxArrays, nstartHyperbolic_, state_new_[lev].nComp());
-			incrementFluxRegisters(iter, fr_as_crse, fr_as_fine, expandedFluxes, lev,
-						0.5 * dt_radiation);
+			if (do_reflux) {
+				// increment flux registers
+				// WARNING: as written, diffusive flux correction is not compatible with reflux!!
+				auto expandedFluxes =
+					expandFluxArrays(fluxArrays, nstartHyperbolic_, state_new_[lev].nComp());
+				incrementFluxRegisters(iter, fr_as_crse, fr_as_fine, expandedFluxes, lev,
+							0.5 * dt_radiation);
+			}
 		}
 	}
 
-	// matter-radiation exchange source terms
-	for (amrex::MFIter iter(state_new_[lev]); iter.isValid(); ++iter) {
-		const amrex::Box &indexRange = iter.tilebox();
-		auto const &stateNew = state_new_[lev].array(iter);
-		operatorSplitSourceTerms(stateNew, indexRange, ncomp_, time, dt_radiation, dx);
+#ifdef AMREX_USE_OMP
+#pragma omp parallel if (amrex::Gpu::notInLaunchRegion())
+#endif
+	{
+		// matter-radiation exchange source terms
+		for (amrex::MFIter iter(state_new_[lev],amrex::TilingIfNotGPU()); iter.isValid(); ++iter) {
+			const amrex::Box &indexRange = iter.tilebox();
+			auto const &stateNew = state_new_[lev].array(iter);
+			operatorSplitSourceTerms(stateNew, indexRange, ncomp_, time, dt_radiation, dx);
+		}
 	}
 }
 
