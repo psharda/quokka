@@ -103,7 +103,7 @@ auto fextract(MultiFab &mf, Geometry &geom, const int idir,
 
   for (int ivar = 0; ivar < mf.nComp(); ++ivar) {
     for (MFIter mfi(mf); mfi.isValid(); ++mfi) {
-      const Box &bx = mfi.validbox() & slice_box;
+      const Box &bx = mfi.tilebox() & slice_box;
       if (bx.ok()) {
         const auto &fab = mf.array(mfi);
         const auto lo = amrex::lbound(bx);

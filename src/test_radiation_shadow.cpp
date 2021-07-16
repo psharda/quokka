@@ -119,7 +119,7 @@ template <> void RadhydroSimulation<ShadowProblem>::setInitialConditionsAtLevel(
 	auto dx = geom[lev].CellSizeArray();
 
 	for (amrex::MFIter iter(state_new_[lev]); iter.isValid(); ++iter) {
-		const amrex::Box &indexRange = iter.validbox(); // excludes ghost zones
+		const amrex::Box &indexRange = iter.tilebox(); // excludes ghost zones
 		auto const &state = state_new_[lev].array(iter);
 
 		amrex::ParallelFor(indexRange, [=] AMREX_GPU_DEVICE(int i, int j, int k) {
@@ -166,7 +166,7 @@ void RadhydroSimulation<ShadowProblem>::ErrorEst(int lev, amrex::TagBoxArray &ta
 	const amrex::Real erad_min = 1.0e-3;   // minimum erad for refinement
 
 	for (amrex::MFIter mfi(state_new_[lev]); mfi.isValid(); ++mfi) {
-		const amrex::Box &box = mfi.validbox();
+		const amrex::Box &box = mfi.tilebox();
 		const auto state = state_new_[lev].const_array(mfi);
 		const auto tag = tags.array(mfi);
 

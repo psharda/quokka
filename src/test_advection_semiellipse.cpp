@@ -27,7 +27,7 @@ template <> void AdvectionSimulation<SemiellipseProblem>::setInitialConditionsAt
 	auto const &dx = geom[level].CellSizeArray();
 
 	for (amrex::MFIter iter(state_old_[level]); iter.isValid(); ++iter) {
-		const amrex::Box &indexRange = iter.validbox(); // excludes ghost zones
+		const amrex::Box &indexRange = iter.tilebox(); // excludes ghost zones
 		auto const &state = state_new_[level].array(iter);
 
 		amrex::ParallelFor(indexRange, ncomp_, [=] AMREX_GPU_DEVICE(int i, int j, int k, int n) {
@@ -108,7 +108,7 @@ auto problem_main() -> int
 				    sim.nghost_);
 
 	for (amrex::MFIter iter(sim.state_new_); iter.isValid(); ++iter) {
-		const amrex::Box &indexRange = iter.validbox();
+		const amrex::Box &indexRange = iter.tilebox();
 		auto const &stateExact = state_exact.array(iter);
 		ComputeExactSolution(stateExact, indexRange, sim.ncomp_, sim.nx_[0]);
 	}

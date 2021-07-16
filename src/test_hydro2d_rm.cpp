@@ -107,7 +107,7 @@ template <> void RadhydroSimulation<RichtmeyerMeshkovProblem>::setInitialConditi
 	amrex::GpuArray<amrex::Real, AMREX_SPACEDIM> prob_hi = geom[lev].ProbHiArray();
 
 	for (amrex::MFIter iter(state_new_[lev]); iter.isValid(); ++iter) {
-		const amrex::Box &indexRange = iter.validbox(); // excludes ghost zones
+		const amrex::Box &indexRange = iter.tilebox(); // excludes ghost zones
 		auto const &state = state_new_[lev].array(iter);
 
 		amrex::ParallelFor(indexRange, [=] AMREX_GPU_DEVICE(int i, int j, int k) {

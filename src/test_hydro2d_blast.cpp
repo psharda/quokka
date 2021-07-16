@@ -39,7 +39,7 @@ template <> void RadhydroSimulation<BlastProblem>::setInitialConditionsAtLevel(i
 	amrex::Real const y0 = prob_lo[1] + 0.5 * (prob_hi[1] - prob_lo[1]);
 
 	for (amrex::MFIter iter(state_old_[lev]); iter.isValid(); ++iter) {
-		const amrex::Box &indexRange = iter.validbox(); // excludes ghost zones
+		const amrex::Box &indexRange = iter.tilebox(); // excludes ghost zones
 		auto const &state = state_new_[lev].array(iter);
 
 		amrex::ParallelFor(indexRange, [=] AMREX_GPU_DEVICE(int i, int j, int k) {
@@ -97,7 +97,7 @@ void RadhydroSimulation<BlastProblem>::ErrorEst(int lev, amrex::TagBoxArray &tag
 	const amrex::Real P_min = 1.0e-3;      // minimum pressure for refinement
 
 	for (amrex::MFIter mfi(state_new_[lev]); mfi.isValid(); ++mfi) {
-		const amrex::Box &box = mfi.validbox();
+		const amrex::Box &box = mfi.tilebox();
 		const auto state = state_new_[lev].const_array(mfi);
 		const auto tag = tags.array(mfi);
 

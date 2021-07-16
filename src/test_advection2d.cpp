@@ -53,7 +53,7 @@ template <> void AdvectionSimulation<SquareProblem>::setInitialConditionsAtLevel
 	auto dx = geom[level].CellSizeArray();
 
 	for (amrex::MFIter iter(state_old_[level]); iter.isValid(); ++iter) {
-		const amrex::Box &indexRange = iter.validbox(); // excludes ghost zones
+		const amrex::Box &indexRange = iter.tilebox(); // excludes ghost zones
 		auto const &state = state_new_[level].array(iter);
 
 		amrex::ParallelFor(
@@ -87,7 +87,7 @@ void AdvectionSimulation<SquareProblem>::ErrorEst(int lev, amrex::TagBoxArray &t
 	const amrex::Real rho_min = 0.1;       // minimum rho for refinement
 
 	for (amrex::MFIter mfi(state_new_[lev]); mfi.isValid(); ++mfi) {
-		const amrex::Box &box = mfi.validbox();
+		const amrex::Box &box = mfi.tilebox();
 		const auto state = state_new_[lev].const_array(mfi);
 		const auto tag = tags.array(mfi);
 

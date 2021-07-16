@@ -153,7 +153,7 @@ void RadhydroSimulation<problem_t>::computeMaxSignalLocal(int const level)
 
 	// hydro: loop over local grids, compute CFL timestep
 	for (amrex::MFIter iter(state_new_[level]); iter.isValid(); ++iter) {
-		const amrex::Box &indexRange = iter.validbox();
+		const amrex::Box &indexRange = iter.tilebox();
 		auto const &stateNew = state_new_[level].const_array(iter);
 		auto const &maxSignal = max_signal_speed_[level].array(iter);
 		if (is_hydro_enabled_) {
@@ -245,7 +245,7 @@ void RadhydroSimulation<problem_t>::advanceHydroAtLevel(int lev, amrex::Real tim
 
 	// advance all grids on local processor (Stage 1 of integrator)
 	for (amrex::MFIter iter(state_new_[lev]); iter.isValid(); ++iter) {
-		const amrex::Box &indexRange = iter.validbox(); // 'validbox' == exclude ghost zones
+		const amrex::Box &indexRange = iter.tilebox(); // 'validbox' == exclude ghost zones
 		auto const &stateOld = state_old_[lev].const_array(iter);
 		auto const &stateNew = state_new_[lev].array(iter);
 		auto fluxArrays = computeHydroFluxes(stateOld, indexRange, ncompHydro_);
@@ -274,7 +274,7 @@ void RadhydroSimulation<problem_t>::advanceHydroAtLevel(int lev, amrex::Real tim
 
 	// advance all grids on local processor (Stage 2 of integrator)
 	for (amrex::MFIter iter(state_new_[lev]); iter.isValid(); ++iter) {
-		const amrex::Box &indexRange = iter.validbox(); // 'validbox' == exclude ghost zones
+		const amrex::Box &indexRange = iter.tilebox(); // 'validbox' == exclude ghost zones
 		auto const &stateOld = state_old_[lev].const_array(iter);
 		auto const &stateInter = state_new_[lev].const_array(iter);
 		auto const &stateNew = state_new_[lev].array(iter);
@@ -451,7 +451,7 @@ void RadhydroSimulation<problem_t>::advanceSingleTimestepAtLevelRadiation(
 
 	// advance all grids on local processor (Stage 1 of integrator)
 	for (amrex::MFIter iter(state_new_[lev]); iter.isValid(); ++iter) {
-		const amrex::Box &indexRange = iter.validbox();
+		const amrex::Box &indexRange = iter.tilebox();
 		auto const &stateOld = state_old_[lev].const_array(iter);
 		auto const &stateNew = state_new_[lev].array(iter);
 		auto [fluxArrays, fluxDiffusiveArrays] =
@@ -482,7 +482,7 @@ void RadhydroSimulation<problem_t>::advanceSingleTimestepAtLevelRadiation(
 
 	// advance all grids on local processor (Stage 2 of integrator)
 	for (amrex::MFIter iter(state_new_[lev]); iter.isValid(); ++iter) {
-		const amrex::Box &indexRange = iter.validbox();
+		const amrex::Box &indexRange = iter.tilebox();
 		auto const &stateOld = state_old_[lev].const_array(iter);
 		auto const &stateInter = state_new_[lev].const_array(iter);
 		auto const &stateNew = state_new_[lev].array(iter);
@@ -511,7 +511,7 @@ void RadhydroSimulation<problem_t>::advanceSingleTimestepAtLevelRadiation(
 
 	// matter-radiation exchange source terms
 	for (amrex::MFIter iter(state_new_[lev]); iter.isValid(); ++iter) {
-		const amrex::Box &indexRange = iter.validbox();
+		const amrex::Box &indexRange = iter.tilebox();
 		auto const &stateNew = state_new_[lev].array(iter);
 		operatorSplitSourceTerms(stateNew, indexRange, ncomp_, time, dt_radiation, dx);
 	}

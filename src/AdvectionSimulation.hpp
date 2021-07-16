@@ -101,7 +101,7 @@ void AdvectionSimulation<problem_t>::computeMaxSignalLocal(int const level)
 {
 	// loop over local grids, compute CFL timestep
 	for (amrex::MFIter iter(state_new_[level]); iter.isValid(); ++iter) {
-		const amrex::Box &indexRange = iter.validbox();
+		const amrex::Box &indexRange = iter.tilebox();
 		auto const &stateOld = state_old_[level].const_array(iter);
 		auto const &maxSignal = max_signal_speed_[level].array(iter);
 		LinearAdvectionSystem<problem_t>::ComputeMaxSignalSpeed(
@@ -202,7 +202,7 @@ void AdvectionSimulation<problem_t>::advanceSingleTimestepAtLevel(int lev, amrex
 
 	// advance all grids on local processor (Stage 1 of integrator)
 	for (amrex::MFIter iter(state_new_[lev]); iter.isValid(); ++iter) {
-		const amrex::Box &indexRange = iter.validbox();
+		const amrex::Box &indexRange = iter.tilebox();
 		auto const &stateOld = state_old_[lev].const_array(iter);
 		auto const &stateNew = state_new_[lev].array(iter);
 		auto fluxArrays = computeFluxes(stateOld, indexRange, ncomp_);
@@ -233,7 +233,7 @@ void AdvectionSimulation<problem_t>::advanceSingleTimestepAtLevel(int lev, amrex
 
 		// advance all grids on local processor (Stage 2 of integrator)
 		for (amrex::MFIter iter(state_new_[lev]); iter.isValid(); ++iter) {
-			const amrex::Box &indexRange = iter.validbox();
+			const amrex::Box &indexRange = iter.tilebox();
 			auto const &stateInOld = state_old_[lev].const_array(iter);
 			auto const &stateInStar = state_new_[lev].const_array(iter);
 			auto const &stateOut = state_new_[lev].array(iter);
