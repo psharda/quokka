@@ -29,6 +29,7 @@
 #include "AMReX_FabFactory.H"
 #include "AMReX_GpuControl.H"
 #include "AMReX_IntVect.H"
+#include "AMReX_MFIter.H"
 #include "AMReX_MultiFab.H"
 #include "AMReX_MultiFabUtil.H"
 #include "AMReX_PhysBCFunct.H"
@@ -243,25 +244,30 @@ void RadhydroSimulation<problem_t>::advanceHydroAtLevel(int lev, amrex::Real tim
 	// update ghost zones [old timestep]
 	fillBoundaryConditions(state_old_[lev], state_old_[lev], lev, time);
 
-	// advance all grids on local processor (Stage 1 of integrator)
-	for (amrex::MFIter iter(state_new_[lev]); iter.isValid(); ++iter) {
-		const amrex::Box &indexRange = iter.tilebox(); // 'validbox' == exclude ghost zones
-		auto const &stateOld = state_old_[lev].const_array(iter);
-		auto const &stateNew = state_new_[lev].array(iter);
-		auto fluxArrays = computeHydroFluxes(stateOld, indexRange, ncompHydro_);
+#ifdef AMREX_USE_OMP
+#pragma omp parallel if (Gpu::notInLaunchRegion())
+#endif
+	{
+		// advance all grids on local processor (Stage 1 of integrator)
+		for (amrex::MFIter iter(state_new_[lev],amrex::TilingIfNotGPU()); iter.isValid(); ++iter) {
+			const amrex::Box &indexRange = iter.tilebox(); // 'validbox' == exclude ghost zones
+			auto const &stateOld = state_old_[lev].const_array(iter);
+			auto const &stateNew = state_new_[lev].array(iter);
+			auto fluxArrays = computeHydroFluxes(stateOld, indexRange, ncompHydro_);
 
-		// Stage 1 of RK2-SSP
-		HydroSystem<problem_t>::PredictStep(
-		    stateOld, stateNew,
-		    {AMREX_D_DECL(fluxArrays[0].const_array(), fluxArrays[1].const_array(),
-				  fluxArrays[2].const_array())},
-		    dt_lev, geom[lev].CellSizeArray(), indexRange, ncompHydro_);
+			// Stage 1 of RK2-SSP
+			HydroSystem<problem_t>::PredictStep(
+				stateOld, stateNew,
+				{AMREX_D_DECL(fluxArrays[0].const_array(), fluxArrays[1].const_array(),
+					fluxArrays[2].const_array())},
+				dt_lev, geom[lev].CellSizeArray(), indexRange, ncompHydro_);
 
-		if (do_reflux) {
-			// increment flux registers
-			auto expandedFluxes = expandFluxArrays(fluxArrays, 0, state_new_[lev].nComp());
-			incrementFluxRegisters(iter, fr_as_crse, fr_as_fine, expandedFluxes, lev,
-					       0.5 * dt_lev);
+			if (do_reflux) {
+				// increment flux registers
+				auto expandedFluxes = expandFluxArrays(fluxArrays, 0, state_new_[lev].nComp());
+				incrementFluxRegisters(iter, fr_as_crse, fr_as_fine, expandedFluxes, lev,
+							0.5 * dt_lev);
+			}
 		}
 	}
 
@@ -272,26 +278,31 @@ void RadhydroSimulation<problem_t>::advanceHydroAtLevel(int lev, amrex::Real tim
 	// update ghost zones [intermediate stage stored in state_new_]
 	fillBoundaryConditions(state_new_[lev], state_new_[lev], lev, time + dt_lev);
 
-	// advance all grids on local processor (Stage 2 of integrator)
-	for (amrex::MFIter iter(state_new_[lev]); iter.isValid(); ++iter) {
-		const amrex::Box &indexRange = iter.tilebox(); // 'validbox' == exclude ghost zones
-		auto const &stateOld = state_old_[lev].const_array(iter);
-		auto const &stateInter = state_new_[lev].const_array(iter);
-		auto const &stateNew = state_new_[lev].array(iter);
-		auto fluxArrays = computeHydroFluxes(stateInter, indexRange, ncompHydro_);
+#ifdef AMREX_USE_OMP
+#pragma omp parallel if (Gpu::notInLaunchRegion())
+#endif
+	{
+		// advance all grids on local processor (Stage 2 of integrator)
+		for (amrex::MFIter iter(state_new_[lev],amrex::TilingIfNotGPU()); iter.isValid(); ++iter) {
+			const amrex::Box &indexRange = iter.tilebox(); // 'validbox' == exclude ghost zones
+			auto const &stateOld = state_old_[lev].const_array(iter);
+			auto const &stateInter = state_new_[lev].const_array(iter);
+			auto const &stateNew = state_new_[lev].array(iter);
+			auto fluxArrays = computeHydroFluxes(stateInter, indexRange, ncompHydro_);
 
-		// Stage 2 of RK2-SSP
-		HydroSystem<problem_t>::AddFluxesRK2(
-		    stateNew, stateOld, stateInter,
-		    {AMREX_D_DECL(fluxArrays[0].const_array(), fluxArrays[1].const_array(),
-				  fluxArrays[2].const_array())},
-		    dt_lev, geom[lev].CellSizeArray(), indexRange, ncompHydro_);
+			// Stage 2 of RK2-SSP
+			HydroSystem<problem_t>::AddFluxesRK2(
+				stateNew, stateOld, stateInter,
+				{AMREX_D_DECL(fluxArrays[0].const_array(), fluxArrays[1].const_array(),
+					fluxArrays[2].const_array())},
+				dt_lev, geom[lev].CellSizeArray(), indexRange, ncompHydro_);
 
-		if (do_reflux) {
-			// increment flux registers
-			auto expandedFluxes = expandFluxArrays(fluxArrays, 0, state_new_[lev].nComp());
-			incrementFluxRegisters(iter, fr_as_crse, fr_as_fine, expandedFluxes, lev,
-						0.5 * dt_lev);
+			if (do_reflux) {
+				// increment flux registers
+				auto expandedFluxes = expandFluxArrays(fluxArrays, 0, state_new_[lev].nComp());
+				incrementFluxRegisters(iter, fr_as_crse, fr_as_fine, expandedFluxes, lev,
+							0.5 * dt_lev);
+			}
 		}
 	}
 }
