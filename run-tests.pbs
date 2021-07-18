@@ -1,0 +1,17 @@
+#!/bin/bash
+
+#PBS -N quokka_blast3d
+#PBS -q normal
+#PBS -l ncpus=48
+#PBS -l mem=192GB
+#PBS -m aeb
+#PBS -l wd
+#PBS -l walltime=1:00:00
+#PBS -l storage=scratch/jh2+gdata/jh2
+#PBS -l jobfs=400GB
+
+export OMP_NUM_THREADS=24
+export GOMP_CPU_AFFINITY=0-47
+export NPROC=$(( $PBS_NCPUS / $OMP_NUM_THREADS ))
+
+mpirun -np $NPROC --map-by ppr:1:socket:PE=$OMP_NUM_THREADS --report-bindings ./build/src/test_hydro3d_blast tests/blast_unigrid.in amrex.async_out=1 > hydro3d_blast.log
