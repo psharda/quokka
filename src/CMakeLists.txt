@@ -132,6 +132,8 @@ set (QuokkaObjSources "${CMAKE_CURRENT_SOURCE_DIR}/main.cpp" "${CMAKE_CURRENT_SO
 #endif()
 #link_libraries(QuokkaObj)
 
+add_subdirectory(PopIII_NoMicrophysics)
+
 add_subdirectory(Advection)
 add_subdirectory(Advection2D)
 add_subdirectory(AdvectionSemiellipse)
