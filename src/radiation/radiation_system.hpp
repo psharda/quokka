@@ -22,6 +22,7 @@
 #include "AMReX_REAL.H"
 
 // internal headers
+#include "fundamental_constants.H"
 #include "hydro/EOS.hpp"
 #include "hyperbolic_system.hpp"
 #include "math/math_impl.hpp"
@@ -71,9 +72,7 @@ enum class OpacityModel {
 // this struct is specialized by the user application code
 //
 template <typename problem_t> struct RadSystem_Traits {
-	static constexpr double c_light = c_light_cgs_;
-	static constexpr double c_hat = c_light_cgs_;
-	static constexpr double radiation_constant = radiation_constant_cgs_;
+	static constexpr double c_hat_over_c = 1.0;
 	static constexpr double Erad_floor = 0.;
 	static constexpr double energy_unit = C::ev2erg;
 	static constexpr amrex::GpuArray<double, Physics_Traits<problem_t>::nGroups + 1> radBoundaries = {0., inf};
@@ -189,9 +188,32 @@ template <typename problem_t> class RadSystem : public HyperbolicSystem<problem_
 
 	// C++ standard does not allow constexpr to be uninitialized, even in a
 	// templated class!
-	static constexpr double c_light_ = RadSystem_Traits<problem_t>::c_light;
-	static constexpr double c_hat_ = RadSystem_Traits<problem_t>::c_hat;
-	static constexpr double radiation_constant_ = RadSystem_Traits<problem_t>::radiation_constant;
+
+	static constexpr amrex::Real c_light_ = []() constexpr {
+		if constexpr (Physics_Traits<problem_t>::unit_system == UnitSystem::CGS) {
+			return c_light_cgs_;
+		} else if constexpr (Physics_Traits<problem_t>::unit_system == UnitSystem::CONSTANTS) {
+			return Physics_Traits<problem_t>::c_light;
+		} else if constexpr (Physics_Traits<problem_t>::unit_system == UnitSystem::CUSTOM) {
+			// c / c_bar = u_l / u_t
+			return c_light_cgs_ / (Physics_Traits<problem_t>::unit_length / Physics_Traits<problem_t>::unit_time);
+		}
+	}();
+	static constexpr double c_hat_ = c_light_ * RadSystem_Traits<problem_t>::c_hat_over_c;
+
+	static constexpr double radiation_constant_ = []() constexpr {
+		if constexpr (Physics_Traits<problem_t>::unit_system == UnitSystem::CGS) {
+			return C::a_rad;
+		} else if constexpr (Physics_Traits<problem_t>::unit_system == UnitSystem::CONSTANTS) {
+			return Physics_Traits<problem_t>::radiation_constant;
+		} else if constexpr (Physics_Traits<problem_t>::unit_system == UnitSystem::CUSTOM) {
+			// a_rad / a_rad_bar = 1 / u_l * u_m / u_t^2 / u_T^4
+			return C::a_rad / (1.0 / Physics_Traits<problem_t>::unit_length * Physics_Traits<problem_t>::unit_mass /
+					   (Physics_Traits<problem_t>::unit_time * Physics_Traits<problem_t>::unit_time) /
+					   (Physics_Traits<problem_t>::unit_temperature * Physics_Traits<problem_t>::unit_temperature *
+					    Physics_Traits<problem_t>::unit_temperature * Physics_Traits<problem_t>::unit_temperature));
+		}
+	}();
 
 	static constexpr int beta_order_ = RadSystem_Traits<problem_t>::beta_order;
 
@@ -227,8 +249,20 @@ template <typename problem_t> class RadSystem : public HyperbolicSystem<problem_
 		      "PPL_opacity_full_spectrum requires at least 3 photon groups.");
 
 	static constexpr double mean_molecular_mass_ = quokka::EOS_Traits<problem_t>::mean_molecular_weight;
-	static constexpr double boltzmann_constant_ = quokka::EOS_Traits<problem_t>::boltzmann_constant;
 	static constexpr double gamma_ = quokka::EOS_Traits<problem_t>::gamma;
+
+	static constexpr amrex::Real boltzmann_constant_ = []() constexpr {
+		if constexpr (Physics_Traits<problem_t>::unit_system == UnitSystem::CGS) {
+			return C::k_B;
+		} else if constexpr (Physics_Traits<problem_t>::unit_system == UnitSystem::CONSTANTS) {
+			return Physics_Traits<problem_t>::boltzmann_constant;
+		} else if constexpr (Physics_Traits<problem_t>::unit_system == UnitSystem::CUSTOM) {
+			// k_B / k_B_bar = u_l^2 * u_m / u_t^2 / u_T
+			return C::k_B /
+			       (Physics_Traits<problem_t>::unit_length * Physics_Traits<problem_t>::unit_length * Physics_Traits<problem_t>::unit_mass /
+				(Physics_Traits<problem_t>::unit_time * Physics_Traits<problem_t>::unit_time) / Physics_Traits<problem_t>::unit_temperature);
+		}
+	}();
 
 	// static functions
 
