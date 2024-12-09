@@ -216,8 +216,7 @@ template <typename problem_t> class AMRSimulation : public amrex::AmrCore
 	void computeTimestep();
 	auto computeTimestepAtLevel(int lev) -> amrex::Real;
 
-	void AverageFCToCC(amrex::MultiFab &mf_cc, const amrex::MultiFab &mf_fc, int idim, int dstcomp_start, int srccomp_start, int srccomp_total,
-			   int nGrow) const;
+	void AverageFCToCC(amrex::MultiFab &mf_cc, const amrex::MultiFab &mf_fc, int idim, int dstcomp_start, int srccomp_start, int srccomp_total) const;
 
 	virtual void computeMaxSignalLocal(int level) = 0;
 	virtual auto computeExtraPhysicsTimestep(int lev) -> amrex::Real = 0;
@@ -586,11 +585,9 @@ template <typename problem_t> void AMRSimulation<problem_t>::PerformanceHints()
 	}
 
 #ifdef QUOKKA_USE_OPENPMD
-	// warning about face-centered variables and OpenPMD outputs
-	if constexpr (Physics_Indices<problem_t>::nvarTotal_fc > 0) {
-		amrex::Print() << "\n[Warning] [I/O] Plotfiles will ONLY contain cell-centered averages of face-centered variables!"
-			       << " Support for outputting face-centered variables for openPMD is not yet implemented.\n";
-	}
+	// warning about particles and OpenPMD outputs
+	amrex::Print() << "\n[Warning] [I/O] OpenPMD outputs currently do NOT include particles!"
+		       << " Support for outputting particles for openPMD is not yet implemented.\n";
 #endif
 }
 
@@ -2089,7 +2086,7 @@ template <typename problem_t> auto AMRSimulation<problem_t>::CustomPlotFileName(
 
 template <typename problem_t>
 void AMRSimulation<problem_t>::AverageFCToCC(amrex::MultiFab &mf_cc, const amrex::MultiFab &mf_fc, int idim, int dstcomp_start, int srccomp_start,
-					     int srccomp_total, int nGrow) const
+					     int srccomp_total) const
 {
 	int di = 0;
 	int dj = 0;
@@ -2104,7 +2101,10 @@ void AMRSimulation<problem_t>::AverageFCToCC(amrex::MultiFab &mf_cc, const amrex
 	// iterate over the domain
 	auto const &state_cc = mf_cc.arrays();
 	auto const &state_fc = mf_fc.const_arrays();
-	amrex::ParallelFor(mf_cc, amrex::IntVect(AMREX_D_DECL(nGrow, nGrow, nGrow)), [=] AMREX_GPU_DEVICE(int boxidx, int i, int j, int k) {
+	int const ng_cc = mf_cc.nGrow();
+	int const ng_fc = mf_fc.nGrow();
+	AMREX_ALWAYS_ASSERT(ng_cc <= ng_fc); // if this is false, we can't fill the ghost cells!
+	amrex::ParallelFor(mf_cc, amrex::IntVect(AMREX_D_DECL(ng_cc, ng_cc, ng_cc)), [=] AMREX_GPU_DEVICE(int boxidx, int i, int j, int k) {
 		for (int icomp = 0; icomp < srccomp_total; ++icomp) {
 			state_cc[boxidx](i, j, k, dstcomp_start + icomp) =
 			    0.5 * (state_fc[boxidx](i, j, k, srccomp_start + icomp) + state_fc[boxidx](i + di, j + dj, k + dk, srccomp_start + icomp));
@@ -2153,7 +2153,7 @@ template <typename problem_t> auto AMRSimulation<problem_t>::PlotFileMFAtLevel(c
 	// compute cell-center averaged face-centred data
 	if constexpr (Physics_Indices<problem_t>::nvarTotal_fc > 0) {
 		for (int idim = 0; idim < AMREX_SPACEDIM; ++idim) {
-			AverageFCToCC(plotMF, state_new_fc_[lev][idim], idim, comp, 0, ncomp_per_dim_fc, nghost_fc);
+			AverageFCToCC(plotMF, state_new_fc_[lev][idim], idim, comp, 0, ncomp_per_dim_fc);
 			comp += ncomp_per_dim_fc;
 		}
 	}
@@ -2240,7 +2240,7 @@ template <typename problem_t> void AMRSimulation<problem_t>::doDiagnostics()
 	if (computeVars) {
 		for (int lev{0}; lev <= finestLevel(); ++lev) {
 			diagMFVec[lev] = std::make_unique<amrex::MultiFab>(grids[lev], dmap[lev], m_diagVars.size(), 1);
-			amrex::MultiFab const mf = PlotFileMFAtLevel(lev, nghost_cc_);
+			amrex::MultiFab const mf = PlotFileMFAtLevel(lev, std::min(nghost_cc_, nghost_fc_));
 			auto const varnames = GetPlotfileVarNames();
 
 			for (int v{0}; v < m_diagVars.size(); ++v) {
@@ -2301,7 +2301,8 @@ template <typename problem_t> void AMRSimulation<problem_t>::RenderAscent()
 	BL_PROFILE("AMRSimulation::RenderAscent()");
 
 	// combine multifabs
-	amrex::Vector<amrex::MultiFab> mf = PlotFileMF(nghost_cc_);
+	const int included_ghosts = std::min(nghost_cc_, nghost_fc_);
+	amrex::Vector<amrex::MultiFab> mf = PlotFileMF(included_ghosts);
 	amrex::Vector<const amrex::MultiFab *> mf_ptr = amrex::GetVecOfConstPtrs(mf);
 	amrex::Vector<std::string> varnames;
 	varnames.insert(varnames.end(), componentNames_cc_.begin(), componentNames_cc_.end());
@@ -2364,7 +2365,7 @@ template <typename problem_t> void AMRSimulation<problem_t>::WritePlotFile()
 #ifdef QUOKKA_USE_OPENPMD
 	int included_ghosts = 0;
 #else
-	int included_ghosts = nghost_cc_;
+	int included_ghosts = std::min(nghost_cc_, nghost_fc_);
 #endif
 	amrex::Vector<amrex::MultiFab> mf = PlotFileMF(included_ghosts);
 	amrex::Vector<const amrex::MultiFab *> mf_ptr = amrex::GetVecOfConstPtrs(mf);
